@@ -9,12 +9,14 @@
 #define PORT2 2202
 #define BUFFER_SIZE 1024
 
-void getInput(char* prompt, char* buffer) {
+void getInput(char* prompt, char* buffer) 
+{
     printf("%s", prompt);
     fgets(buffer, BUFFER_SIZE, stdin);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv) 
+{
     FILE *fp;
     fp = fopen(argv[1], "r");
     char player_number[2];
@@ -23,7 +25,6 @@ int main(int argc, char **argv) {
     struct sockaddr_in serv_addr;
     char buffer[BUFFER_SIZE] = {0};
 
-    // Create socket
     if ((client_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("[Client] socket() failed.");
         exit(EXIT_FAILURE);
@@ -32,14 +33,13 @@ int main(int argc, char **argv) {
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(player_number[0]=='1' ? PORT1 : PORT2);
 
-    // Convert IPv4 and IPv6 addresses from text to binary form
     if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
         perror("[Client] Invalid address/ Address not supported.");
         exit(EXIT_FAILURE);
     }
 
-    // Connect to server
-    if (connect(client_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+    if (connect(client_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) 
+    {
         perror("[Client] connect() failed.");
         exit(EXIT_FAILURE);
     }
