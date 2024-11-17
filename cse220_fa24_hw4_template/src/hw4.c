@@ -5,17 +5,18 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <ctype.h>
+#include <limits.h>
 
 #define PORT1 2201
 #define PORT2 2202
 #define BUFFER_SIZE 1024
 #define MAX_SHIPS 5
-#define MAX_BOARD_SIZE 100
+#define MAX_BOARD_SIZE 250
 
 typedef struct
 {
     int type;
-    int rotation;
+    int rotated;
     int col;
     int row;
     int cells[4][4];
@@ -37,165 +38,66 @@ typedef struct
 int board_width = 0;
 int board_height = 0;
 
-
-void get_piece_layout(int piece[4][4], int piece_type, int piece_rotation)
+const char Shape1[4][4][4] = 
 {
-    memset(piece, 0, sizeof(int) * 4 * 4);
+    { {'2', '1', '0', '0'}, {'1', '1', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '1', '0', '0'}, {'1', '1', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '1', '0', '0'}, {'1', '1', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '1', '0', '0'}, {'1', '1', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} }
+};
 
-    switch (piece_type)
-    {
-        case 1: 
-            for (int i = 0; i < 2; i++)
-                for (int j = 0; j < 2; j++)
-                    piece[i][j] = (i == 0 && j == 0) ? 2 : 1;
-            break;
+const char Shape2[4][4][4] = 
+{
+    { {'2', '0', '0', '0'}, {'1', '0', '0', '0'}, {'1', '0', '0', '0'}, {'1', '0', '0', '0'} },
+    { {'2', '1', '1', '1'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '0', '0', '0'}, {'1', '0', '0', '0'}, {'1', '0', '0', '0'}, {'1', '0', '0', '0'} },
+    { {'2', '1', '1', '1'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} }
+};
 
-        case 2: 
-            if (piece_rotation == 1 || piece_rotation == 3) 
-            {
-                piece[0][0] = 2;
-                for (int i = 1; i < 4; i++)
-                    piece[i][0] = 1;
-            }
-            else if (piece_rotation == 2 || piece_rotation == 4) 
-            {
-                piece[0][0] = 2;
-                for (int i = 1; i < 4; i++)
-                    piece[0][i] = 1;
-            }
-            break;
+const char Shape3[4][4][4] = 
+{
+    { {'0', '1', '1', '0'}, {'2', '1', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '0', '0', '0'}, {'1', '1', '0', '0'}, {'0', '1', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'0', '1', '1', '0'}, {'2', '1', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '0', '0', '0'}, {'1', '1', '0', '0'}, {'0', '1', '0', '0'}, {'0', '0', '0', '0'} }
+};
 
-        case 3: 
-            if (piece_rotation == 1 || piece_rotation == 3)
-            {
-                piece[1][0] = 2;
-                piece[1][1] = 1;
-                piece[0][1] = 1;
-                piece[0][2] = 1;
-            }
-            else if (piece_rotation == 2 || piece_rotation == 4)
-            {
-                piece[0][0] = 2;
-                piece[1][0] = 1;
-                piece[1][1] = 1;
-                piece[2][1] = 1;
-            }
-            break;
+const char Shape4[4][4][4] =
+{
+    { {'2', '0', '0', '0'}, {'1', '0', '0', '0'}, {'1', '1', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '1', '1', '0'}, {'1', '0', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '1', '0', '0'}, {'0', '1', '0', '0'}, {'0', '1', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'0', '0', '1', '0'}, {'2', '1', '1', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} }
+};
 
-        case 4: 
-            if (piece_rotation == 1)
-            {
-                piece[0][0] = 2;
-                piece[1][0] = 1;
-                piece[2][0] = 1;
-                piece[2][1] = 1;
-            }
-            else if (piece_rotation == 2)
-            {
-                piece[0][0] = 2;
-                piece[0][1] = 1;
-                piece[0][2] = 1;
-                piece[1][0] = 1;
-            }
-            else if (piece_rotation == 3)
-            {
-                piece[0][1] = 2;
-                piece[1][1] = 1;
-                piece[2][1] = 1;
-                piece[2][0] = 1;
-            }
-            else if (piece_rotation == 4)
-            {
-                piece[0][2] = 2;
-                piece[1][0] = 1;
-                piece[1][1] = 1;
-                piece[1][2] = 1;
-            }
-            break;
+const char Shape5[4][4][4] = 
+{
+    { {'2', '1', '0', '0'}, {'0', '1', '1', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'0', '1', '0', '0'}, {'2', '1', '0', '0'}, {'1', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '1', '0', '0'}, {'0', '1', '1', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'0', '1', '0', '0'}, {'2', '1', '0', '0'}, {'1', '0', '0', '0'}, {'0', '0', '0', '0'} }
+};
 
-        case 5: 
-            if (piece_rotation == 1 || piece_rotation == 3)
-            {
-                piece[0][1] = 2;
-                piece[0][2] = 1;
-                piece[1][0] = 1;
-                piece[1][1] = 1;
-            }
-            else if (piece_rotation == 2 || piece_rotation == 4)
-            {
-                piece[0][0] = 2;
-                piece[1][0] = 1;
-                piece[1][1] = 1;
-                piece[2][1] = 1;
-            }
-            break;
+const char Shape6[4][4][4] = 
+{
+    { {'0', '1', '0', '0'}, {'0', '1', '0', '0'}, {'2', '1', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '0', '0', '0'}, {'1', '1', '1', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '1', '0', '0'}, {'1', '0', '0', '0'}, {'1', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '1', '1', '0'}, {'0', '0', '1', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} }
+};
 
-        case 6: 
-            if (piece_rotation == 1)
-            {
-                piece[0][1] = 2;
-                piece[1][1] = 1;
-                piece[2][1] = 1;
-                piece[2][0] = 1;
-            }
-            else if (piece_rotation == 2)
-            {
-                piece[0][0] = 2;
-                piece[1][0] = 1;
-                piece[1][1] = 1;
-                piece[1][2] = 1;
-            }
-            else if (piece_rotation == 3)
-            {
-                piece[0][0] = 2;
-                piece[0][1] = 1;
-                piece[1][0] = 1;
-                piece[2][0] = 1;
-            }
-            else if (piece_rotation == 4)
-            {
-                piece[0][2] = 2;
-                piece[1][0] = 1;
-                piece[1][1] = 1;
-                piece[1][2] = 1;
-            }
-            break;
+const char Shape7[4][4][4] = 
+{
+    { {'2', '1', '1', '0'}, {'0', '1', '0', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'0', '1', '0', '0'}, {'2', '1', '0', '0'}, {'0', '1', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'0', '1', '0', '0'}, {'2', '1', '1', '0'}, {'0', '0', '0', '0'}, {'0', '0', '0', '0'} },
+    { {'2', '0', '0', '0'}, {'1', '1', '0', '0'}, {'1', '0', '0', '0'}, {'0', '0', '0', '0'} }
+};
 
-        case 7: // T piece
-            if (piece_rotation == 1)
-            {
-                piece[0][1] = 2;
-                piece[1][0] = 1;
-                piece[1][1] = 1;
-                piece[1][2] = 1;
-            }
-            else if (piece_rotation == 2)
-            {
-                piece[0][1] = 2;
-                piece[1][0] = 1;
-                piece[1][1] = 1;
-                piece[2][1] = 1;
-            }
-            else if (piece_rotation == 3)
-            {
-                piece[1][1] = 2;
-                piece[0][0] = 1;
-                piece[0][1] = 1;
-                piece[0][2] = 1;
-            }
-            else if (piece_rotation == 4)
-            {
-                piece[1][1] = 2;
-                piece[0][1] = 1;
-                piece[1][0] = 1;
-                piece[2][1] = 1;
-            }
-            break;
-
-        default:
-            break;
-    }
-}
+const char (*AllShapes[7])[4][4] = 
+{ 
+    Shape1, Shape2, Shape3, Shape4, Shape5, Shape6, Shape7 
+};
 
 
 int handle_begin_packet(int client_fd, BattleShip *ship) 
@@ -280,21 +182,24 @@ int handle_begin_packet(int client_fd, BattleShip *ship)
         }
     }
 }
+
 int read_and_validate_packet(int connection, char *buffer, BattleShip *ship) 
 {
-    int nbytes = read(connection, buffer, BUFFER_SIZE);
+    int nbytes = read(connection, buffer, BUFFER_SIZE - 1);
     if (nbytes <= 0) 
     {
         perror("[Server] read() failed");
         return -1;
     }
 
+    buffer[nbytes] = '\0'; 
+
     printf("[Server] Received from player %d: %s\n", ship->turn, buffer);
 
     if (buffer[0] == 'F') 
     {
-        char *forfeit_msg = "H 0";
-        char *winner_msg = "H 1";
+        const char *forfeit_msg = "H 0";
+        const char *winner_msg = "H 1";
         send(connection, forfeit_msg, strlen(forfeit_msg) + 1, 0);
 
         if (ship->turn == 1) 
@@ -308,12 +213,13 @@ int read_and_validate_packet(int connection, char *buffer, BattleShip *ship)
         return -1;
     }
 
-    if (buffer[0] != 'I' || buffer[1] != ' ') 
+    if (nbytes < 2 || buffer[0] != 'I' || buffer[1] != ' ') 
     {
-        const char *error = buffer[0] != 'I' ? "E 101" : "E 201";
+        const char *error = (buffer[0] != 'I') ? "E 101" : "E 201";
         send(connection, error, strlen(error) + 1, 0);
         return 0;
     }
+
     return 1;
 }
 
@@ -321,21 +227,20 @@ int parse_packet_parameters(const char *buffer, int *parameters)
 {
     const char *ptr = buffer + 2;
     int param_count = 0;
-    int current_num = 0;
 
     while (*ptr != '\0') 
     {
         if (!isdigit(*ptr)) 
         {
-            return 201;
+            return 201; 
         }
 
         if (*ptr == '0' && isdigit(*(ptr + 1))) 
         {
-            return 201;
+            return 201; 
         }
 
-        current_num = 0;
+        int current_num = 0;
         while (isdigit(*ptr)) 
         {
             current_num = current_num * 10 + (*ptr - '0');
@@ -344,102 +249,91 @@ int parse_packet_parameters(const char *buffer, int *parameters)
 
         parameters[param_count++] = current_num;
 
-        if (*ptr != '\0') 
+        if (param_count > 20) 
         {
-            if (*ptr != ' ') 
-            {
-                return 201;
-            }
-            ptr++;
+            return 201;
+        }
 
-            if (*ptr == ' ' || *ptr == '\0') 
+        if (*ptr == '\0') 
+        {
+            break;
+        }
+        else if (*ptr == ' ') 
+        {
+            ptr++;
+            if (*ptr == '\0') 
             {
-                return 201;
+                return 201; 
             }
+        }
+        else 
+        {
+            return 201; 
         }
     }
 
     if (param_count != 20) 
     {
-        return 201;
+        return 201; 
     }
 
-    return 0;
+    return 0; 
 }
 
-void initialize_board(BattleShip *ship, char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE])
+
+int handle_initialize_packet(int conn_fd, BattleShip *ship) 
 {
-    for (int i = 0; i < ship->height; i++)
-    {
-        for (int j = 0; j < ship->width; j++)
-        {
-            board[i][j] = '0';
-        }
-    }
-}
-
-int handle_initialize_packet(int connection, BattleShip *ship) 
-{
-    char (*board)[MAX_BOARD_SIZE] = (ship->turn == 1) ? ship->player1_board : ship->player2_board;
-
-    for (int i = 0; i < ship->height; i++) 
-    {
-        memset(board[i], '0', ship->width);
-    }
-
     char buffer[BUFFER_SIZE] = {0};
     int parameters[20] = {0};
 
-    int validation_result = read_and_validate_packet(connection, buffer, ship);
+    int validation_result = read_and_validate_packet(conn_fd, buffer, ship);
     if (validation_result <= 0) 
     {
         return validation_result;
     }
 
     int parse_result = parse_packet_parameters(buffer, parameters);
-    if (parse_result) 
+    if (parse_result != 0) 
     {
         char error_msg[10];
         snprintf(error_msg, sizeof(error_msg), "E %d", parse_result);
-        send(connection, error_msg, strlen(error_msg) + 1, 0);
+        send(conn_fd, error_msg, strlen(error_msg) + 1, 0);
         return 0;
     }
 
-    int prio = 0;
-
-    for (int piece = 0; piece < 5; piece++) 
+    char (*board)[MAX_BOARD_SIZE] = (ship->turn == 1) ? ship->player1_board : ship->player2_board;
+    for (int i = 0; i < ship->height; i++) 
     {
+        memset(board[i], '0', ship->width);
+    }
+
+    int prio = 0;  
+    for (int piece = 0; piece < MAX_SHIPS; piece++) 
+    {
+        char ship_num = '1' + piece;
         int shape = parameters[piece * 4];
-        int rotation = parameters[piece * 4 + 1];
+        int rotated = parameters[piece * 4 + 1];
         int col = parameters[piece * 4 + 2];
         int row = parameters[piece * 4 + 3];
-        char ship_num = '1' + piece;
 
         if (shape < 1 || shape > 7) 
         {
-            if (!prio || 300 < prio) 
-                prio = 300; 
+            if (!prio || 300 < prio) prio = 300;
             continue;
         }
-
-        if (rotation < 1 || rotation > 4) 
+        if (rotated < 1 || rotated > 4) 
         {
-            if (!prio || 301 < prio) 
-                prio = 301; 
+            if (!prio || 301 < prio) prio = 301;
             continue;
         }
-
-        rotation--;
+        rotated--;  
 
         int stem_y = -1, stem_x = -1;
-        int piece_layout[4][4];
-        get_piece_layout(piece_layout, shape, rotation);
-
-        for (int y = 0; y < 4 && stem_y == -1; y++) 
+        for (int x = 0; x < 4 && stem_x == -1; x++) 
         {
-            for (int x = 0; x < 4 && stem_x == -1; x++) 
+            for (int y = 0; y < 4 && stem_y == -1; y++) 
             {
-                if (piece_layout[y][x] == 2) 
+                if (AllShapes[shape - 1][rotated][y][x] == '2') 
                 {
                     stem_y = y;
                     stem_x = x;
@@ -448,60 +342,51 @@ int handle_initialize_packet(int connection, BattleShip *ship)
             }
         }
 
-        int sizeCheck = 1;
-
+        int placed = 1;
         if (row < 0 || row >= ship->height || col < 0 || col >= ship->width) 
         {
-            if (!prio || 302 < prio) 
-                prio = 302; 
-            sizeCheck = 0;
+            if (!prio || 302 < prio) prio = 302;
+            placed = 0;
         } 
         else if (board[row][col] != '0') 
         {
-            if (!prio || 303 < prio) 
-                prio = 303; 
-            sizeCheck = 0;
-        } 
-        else 
+            if (!prio || 303 < prio) prio = 303;
+            placed = 0;
+        }
+        for (int x = 0; x < 4 && placed; x++) 
         {
-            for (int y = 0; y < 4 && sizeCheck; y++) 
+            for (int y = 0; y < 4 && placed; y++) 
             {
-                for (int x = 0; x < 4 && sizeCheck; x++) 
+                if (AllShapes[shape - 1][rotated][y][x] == '1') 
                 {
-                    if (piece_layout[y][x] == 1) 
+                    int board_y = row + (y - stem_y);
+                    int board_x = col + (x - stem_x);
+                    if (board_y < 0 || board_y >= ship->height || board_x < 0 || board_x >= ship->width) 
                     {
-                        int board_y = row + (y - stem_y);
-                        int board_x = col + (x - stem_x);
+                        if (!prio || 302 < prio) prio = 302;
+                        placed = 0;
+                        break;
+                    }
 
-                        if (board_x < 0 || board_x >= ship->width || board_y < 0 || board_y >= ship->height) 
-                        {
-                            if (!prio || 302 < prio) 
-                                prio = 302; 
-                            sizeCheck = 0;
-                            break;
-                        }
-
-                        if (board[board_y][board_x] != '0') 
-                        {
-                            if (!prio || 303 < prio) 
-                                prio = 303;
-                            sizeCheck = 0;
-                            break;
-                        }
+                    if (board[board_y][board_x] != '0') 
+                    {
+                        if (!prio || 303 < prio) prio = 303;
+                        placed = 0;
+                        break;
                     }
                 }
             }
         }
 
-        if (sizeCheck) 
+        if (placed != 0) 
         {
             board[row][col] = ship_num;
 
-            for (int y = 0; y < 4; y++) 
+            for (int x = 0; x < 4; x++) 
             {
-                for (int x = 0; x < 4; x++) 
+                for (int y = 0; y < 4; y++) 
                 {
-                    if (piece_layout[y][x] == 1) 
+                    if (AllShapes[shape - 1][rotated][y][x] == '1') 
                     {
                         int board_y = row + (y - stem_y);
                         int board_x = col + (x - stem_x);
@@ -512,17 +397,22 @@ int handle_initialize_packet(int connection, BattleShip *ship)
         }
     }
 
-    if (prio) 
+    if (prio != 0) 
     {
         char error_msg[10];
         snprintf(error_msg, sizeof(error_msg), "E %d", prio);
-        send(connection, error_msg, strlen(error_msg) + 1, 0);
+        send(conn_fd, error_msg, strlen(error_msg) + 1, 0);
         return 0;
     }
+
     const char *ack = "A";
-    send(connection, ack, strlen(ack) + 1, 0);
+    send(conn_fd, ack, strlen(ack) + 1, 0);
     return 1;
 }
+
+
+
+
 
 
 
@@ -746,6 +636,30 @@ void handle_query(BattleShip *ship)
 
     send(play_conn, q_res, strlen(q_res) + 1, 0);
 }
+void cleanup_game_resources(BattleShip *set_ship) 
+{
+    memset(set_ship->player1_board, 0, sizeof(set_ship->player1_board));
+    memset(set_ship->player2_board, 0, sizeof(set_ship->player2_board));
+
+    set_ship->width = 0;
+    set_ship->height = 0;
+    set_ship->turn = 0;
+    set_ship->game_over = 0;
+    set_ship->game_started = 0;
+
+    if (set_ship->play_conn > 0) 
+    {
+        close(set_ship->play_conn);
+        set_ship->play_conn = -1;
+    }
+    if (set_ship->play_conn2 > 0) 
+    {
+        close(set_ship->play_conn2);
+        set_ship->play_conn2 = -1;
+    }
+}
+
+
 
 int main() 
 {
@@ -886,6 +800,7 @@ while (!begin_phase_complete && !error_occurred)
 }
 if (error_occurred) 
 {
+    cleanup_game_resources(&set_ship);
     close(client1_fd);
     close(client2_fd);
     close(server_fd1);
@@ -933,6 +848,7 @@ if (initialization_phase_complete)
 
 if (error_occurred) 
 {
+    cleanup_game_resources(&set_ship);
     close(client1_fd);
     close(client2_fd);
     close(server_fd1);
@@ -1000,6 +916,7 @@ while (!set_ship.game_over)
     }
 }
 
+cleanup_game_resources(&set_ship);
 close(client1_fd);
 close(client2_fd);
 close(server_fd1);
