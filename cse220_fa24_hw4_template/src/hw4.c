@@ -29,7 +29,7 @@ typedef struct
     int width;
     int height;
     int turn;
-    int game_over;
+    int game_ended;
     int play_conn;
     int play_conn2;
     int game_started;
@@ -100,89 +100,6 @@ const char (*AllShapes[7])[4][4] =
 };
 
 
-int handle_begin_packet(int client_fd, BattleShip *ship) 
-{
-    char buffer[BUFFER_SIZE] = {0};
-    int nbytes = read(client_fd, buffer, BUFFER_SIZE - 1);
-    if (nbytes <= 0)
-        return -1;
-
-    buffer[nbytes] = '\0';
-    buffer[strcspn(buffer, "\r\n")] = '\0';
-
-    if (buffer[0] == 'F')
-    {
-        char *forfeit_msg = "H 0";
-        char *winner_msg = "H 1";
-
-        send(client_fd, forfeit_msg, strlen(forfeit_msg), 0);
-        if (ship->turn == 1)
-        {
-            send(ship->play_conn2, winner_msg, strlen(winner_msg), 0);
-        }
-        else
-        {
-            send(ship->play_conn, winner_msg, strlen(winner_msg), 0);
-        }
-        printf("[Server] Player forfeited the game.\n");
-        return -1;
-    }
-
-    if (buffer[0] != 'B')
-    {
-        send(client_fd, "E 100", strlen("E 100"), 0);
-        printf("[Server] Invalid packet type.\n");
-        return 0;
-    }
-
-    if (ship->game_started == 0)
-    {
-        int width, height;
-        char *ptr = buffer + 2;
-
-        char remaining[BUFFER_SIZE];
-        if (sscanf(ptr, "%d %d%s", &width, &height, remaining) == 2)
-        {
-            if (width >= 10 && height >= 10)
-            {
-                ship->width = width;
-                ship->height = height;
-                printf("[Server] Player set the board to %d x %d.\n", ship->width, ship->height);
-                send(client_fd, "A", strlen("A"), 0);
-                ship->game_started = 1;
-                return 1;
-            }
-            else
-            {
-                send(client_fd, "E 200", strlen("E 200"), 0);
-                printf("[Server] Invalid board dimensions.\n");
-                return 0;
-            }
-        }
-        else
-        {
-            send(client_fd, "E 200", strlen("E 200"), 0);
-            printf("[Server] Invalid parameters for Begin packet.\n");
-            return 0;
-        }
-    }
-    else
-    {
-        if (strlen(buffer) == 1)
-        {
-            printf("[Server] Player accepted the board setup.\n");
-            send(client_fd, "A", strlen("A"), 0);
-            return 1;
-        }
-        else
-        {
-            send(client_fd, "E 200", strlen("E 200"), 0);
-            printf("[Server] Invalid parameters for Begin packet.\n");
-            return 0;
-        }
-    }
-}
-
 int read_and_validate_packet(int connection, char *buffer, BattleShip *ship) 
 {
     int nbytes = read(connection, buffer, BUFFER_SIZE - 1);
@@ -198,17 +115,17 @@ int read_and_validate_packet(int connection, char *buffer, BattleShip *ship)
 
     if (buffer[0] == 'F') 
     {
-        const char *forfeit_msg = "H 0";
-        const char *winner_msg = "H 1";
-        send(connection, forfeit_msg, strlen(forfeit_msg) + 1, 0);
+        const char *ff = "H 0";
+        const char *gg = "H 1";
+        send(connection, ff, strlen(ff) + 1, 0);
 
         if (ship->turn == 1) 
         {
-            send(ship->play_conn2, winner_msg, strlen(winner_msg) + 1, 0);
+            send(ship->play_conn2, gg, strlen(gg) + 1, 0);
         } 
         else 
         {
-            send(ship->play_conn, winner_msg, strlen(winner_msg) + 1, 0);
+            send(ship->play_conn, gg, strlen(gg) + 1, 0);
         }
         return -1;
     }
@@ -289,41 +206,100 @@ int parse_packet_parameters(const char *buffer, int *parameters)
 }
 
 
-int handle_initialize_packet(int connection, BattleShip *ship) 
+
+void initialize_board(char (*board)[MAX_BOARD_SIZE], int height, int width) 
+{
+    for (int i = 0; i < height; i++) 
+    {
+        memset(board[i], '0', width);
+    }
+}
+int begin_method(int client_fd, BattleShip *ship) 
 {
     char buffer[BUFFER_SIZE] = {0};
-    int parameters[20] = {0};
-    const char *correct = "A";
-    int validation_result = read_and_validate_packet(connection, buffer, ship);
-    if (validation_result <= 0) 
+    int nbytes = read(client_fd, buffer, BUFFER_SIZE - 1);
+    if (nbytes <= 0)
     {
-        return validation_result;
+        return -1;
+    }
+    buffer[nbytes] = '\0';
+    buffer[strcspn(buffer, "\r\n")] = '\0';
+    if (buffer[0] == 'F')
+    {
+        char *ff = "H 0";
+        char *gg = "H 1";
+        send(client_fd, ff, strlen(ff), 0);
+        if (ship->turn == 1)
+        {
+            send(ship->play_conn2, gg, strlen(gg), 0);
+        }
+        else
+        {
+            send(ship->play_conn, gg, strlen(gg), 0);
+        }
+        printf("[Server] Player forfeited the game.\n");
+        return -1;
     }
 
-    int parse_result = parse_packet_parameters(buffer, parameters);
-    if (parse_result != 0) 
+    if (buffer[0] != 'B')
     {
-        char error_msg[10];
-        snprintf(error_msg, sizeof(error_msg), "E %d", parse_result);
-        send(connection, error_msg, strlen(error_msg) + 1, 0);
+        send(client_fd, "E 100", strlen("E 100"), 0);
+        printf("[Server] Invalid packet type.\n");
         return 0;
     }
 
-    char (*board)[MAX_BOARD_SIZE];
-if (ship->turn == 1)
-{
-    board = ship->player1_board;
-}
-else
-{
-    board = ship->player2_board;
-}
-    for (int i = 0; i < ship->height; i++) 
+    if (ship->game_started == 0)
     {
-        memset(board[i], '0', ship->width);
-    }
+        int width, height;
+        char *ptr = buffer + 2;
 
-    int prio = 0;  
+        char left[BUFFER_SIZE];
+        if (sscanf(ptr, "%d %d%s", &width, &height, left) == 2)
+        {
+            if (width >= 10 && height >= 10)
+            {
+                ship->width = width;
+                ship->height = height;
+                printf("[Server] Player set the board to %d x %d.\n", ship->width, ship->height);
+                send(client_fd, "A", strlen("A"), 0);
+                ship->game_started = 1;
+                return 1;
+            }
+            else
+            {
+                send(client_fd, "E 200", strlen("E 200"), 0);
+                printf("[Server] Invalid board dimensions.\n");
+                return 0;
+            }
+        }
+        else
+        {
+            send(client_fd, "E 200", strlen("E 200"), 0);
+            printf("[Server] Invalid parameters for Begin packet.\n");
+            return 0;
+        }
+    }
+    else
+    {
+        if (strlen(buffer) == 1)
+        {
+            printf("[Server] Player accepted the board setup.\n");
+            send(client_fd, "A", strlen("A"), 0);
+            return 1;
+        }
+        else
+        {
+            send(client_fd, "E 200", strlen("E 200"), 0);
+            printf("[Server] Invalid parameters for Begin packet.\n");
+            return 0;
+        }
+    }
+}
+
+int place_ships_on_board(char (*board)[MAX_BOARD_SIZE], int *parameters, BattleShip *ship) 
+{
+    int prio = 0;
+
     for (int piece = 0; piece < MAX_SHIPS; piece++) 
     {
         char count = '1' + piece;
@@ -348,7 +324,7 @@ else
             }
             continue;
         }
-        moved--;  
+        moved--;
 
         int origin1 = -1, origin2 = -1;
         for (int x = 0; x < 4 && origin2 == -1; x++) 
@@ -423,8 +399,44 @@ else
                 }
             }
         }
-
     }
+    return prio;
+}
+
+int initialize_packet(int connection, BattleShip *ship) 
+{
+    char buffer[BUFFER_SIZE] = {0};
+    int parameters[20] = {0};
+    const char *correct = "A";
+    int validation_result = read_and_validate_packet(connection, buffer, ship);
+
+    if (validation_result <= 0) 
+    {
+        return validation_result;
+    }
+
+    int parse_result = parse_packet_parameters(buffer, parameters);
+    if (parse_result != 0) 
+    {
+        char error_msg[10];
+        snprintf(error_msg, sizeof(error_msg), "E %d", parse_result);
+        send(connection, error_msg, strlen(error_msg) + 1, 0);
+        return 0;
+    }
+
+    char (*board)[MAX_BOARD_SIZE];
+    if (ship->turn == 1)
+    {
+        board = ship->player1_board;
+    }
+    else
+    {
+        board = ship->player2_board;
+    }
+
+    initialize_board(board, ship->height, ship->width);
+    int prio = place_ships_on_board(board, parameters, ship);
+
     if (prio != 0) 
     {
         char error_msg[10];
@@ -432,10 +444,10 @@ else
         send(connection, error_msg, strlen(error_msg) + 1, 0);
         return 0;
     }
+
     send(connection, correct, strlen(correct) + 1, 0);
     return 1;
 }
-
 
 int validate_shoot_target(int x_axis, int y_axis, char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int width, int height, int connection)
 {
@@ -508,12 +520,12 @@ void process_shoot_result(BattleShip *ship, int x_axis, int y_axis, char board[M
 
         if (left == 0) 
         {
-            ship->game_over = 1;
+            ship->game_ended = 1;
         }
     }
 }
 
-int handle_shoot_packet(int connection, char *buffer, BattleShip *ship)
+int shoot_method(int connection, char *buffer, BattleShip *ship)
 {
     int x_axis, y_axis;
     char extra[BUFFER_SIZE];
@@ -574,8 +586,8 @@ int handle_shoot_packet(int connection, char *buffer, BattleShip *ship)
     char winner_buffer[BUFFER_SIZE] = {0};
     int winner_connection = connection;
     read(winner_connection, winner_buffer, BUFFER_SIZE - 1);
-    const char *winner_msg = "H 1";
-    send(winner_connection, winner_msg, strlen(winner_msg) + 1, 0);
+    const char *gg = "H 1";
+    send(winner_connection, gg, strlen(gg) + 1, 0);
 
     if (ship->turn == 1)
     {
@@ -586,7 +598,7 @@ int handle_shoot_packet(int connection, char *buffer, BattleShip *ship)
         printf("[Server] Player 2 wins. All ships sunk for Player 1.\n");
     }
 
-    ship->game_over = 1;
+    ship->game_ended = 1;
 
     return -1; 
 }
@@ -719,7 +731,7 @@ void cleanup_game_resources(BattleShip *set_ship)
     set_ship->width = 0;
     set_ship->height = 0;
     set_ship->turn = 0;
-    set_ship->game_over = 0;
+    set_ship->game_ended = 0;
     set_ship->game_started = 0;
 
     if (set_ship->play_conn > 0) 
@@ -830,7 +842,7 @@ int main()
     set_ship.play_conn = client1_fd;
     set_ship.play_conn2 = client2_fd;
     set_ship.turn = 1;
-    set_ship.game_over = 0;
+    set_ship.game_ended = 0;
 
 for (int i = 0; i < MAX_BOARD_SIZE; i++) 
 {
@@ -850,7 +862,7 @@ while (!begin_phase_complete && !error_occurred)
 {
     if (set_ship.turn == 1) 
     {
-        int p1_result = handle_begin_packet(client1_fd, &set_ship);
+        int p1_result = begin_method(client1_fd, &set_ship);
         if (p1_result == -1) 
         {
             error_occurred = 1; 
@@ -862,7 +874,7 @@ while (!begin_phase_complete && !error_occurred)
     } 
     else if (set_ship.turn == 2) 
     {
-        int p2_result = handle_begin_packet(client2_fd, &set_ship);
+        int p2_result = begin_method(client2_fd, &set_ship);
         if (p2_result == -1) 
         {
             error_occurred = 1; 
@@ -892,7 +904,7 @@ while (!initialization_phase_complete && !error_occurred)
 {
     if (set_ship.turn == 1) 
     {
-        int p1_result = handle_initialize_packet(client1_fd, &set_ship);
+        int p1_result = initialize_packet(client1_fd, &set_ship);
         if (p1_result == -1) 
         {
             error_occurred = 1; 
@@ -904,7 +916,7 @@ while (!initialization_phase_complete && !error_occurred)
     } 
     else if (set_ship.turn == 2) 
     {
-        int p2_result = handle_initialize_packet(client2_fd, &set_ship);
+        int p2_result = initialize_packet(client2_fd, &set_ship);
         if (p2_result == -1) 
         {
             error_occurred = 1; 
@@ -930,7 +942,7 @@ if (error_occurred)
     close(server_fd2);
     return -1; 
 }
-while (!set_ship.game_over) 
+while (!set_ship.game_ended) 
 {
     int connection;
     if (set_ship.turn == 1)
@@ -964,8 +976,8 @@ while (!set_ship.game_over)
 
         if (command[0] == 'F') 
         {
-            char *forfeit_msg = "H 0";
-            char *winner_msg = "H 1";
+            char *ff = "H 0";
+            char *gg = "H 1";
             int other_connection;
     if (set_ship.turn == 1)
     {
@@ -976,8 +988,8 @@ while (!set_ship.game_over)
         other_connection = set_ship.play_conn;
     }
 
-            send(connection, forfeit_msg, strlen(forfeit_msg) + 1, 0);
-            send(other_connection, winner_msg, strlen(winner_msg) + 1, 0);
+            send(connection, ff, strlen(ff) + 1, 0);
+            send(other_connection, gg, strlen(gg) + 1, 0);
 
             if (set_ship.turn == 1)
     {
@@ -987,16 +999,16 @@ while (!set_ship.game_over)
     {
         printf("[Server] Player 2 forfeited. Player 1 wins.\n");
     }
-            set_ship.game_over = 1;
+            set_ship.game_ended = 1;
             break;
         }
         else if (command[0] == 'S') 
         {
-            int shoot_result = handle_shoot_packet(connection, command, &set_ship);
+            int shoot_result = shoot_method(connection, command, &set_ship);
 
             if (shoot_result < 0) 
             {
-                set_ship.game_over = 1;
+                set_ship.game_ended = 1;
                 break;
             }
         }
