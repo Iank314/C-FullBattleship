@@ -16,9 +16,9 @@
 typedef struct
 {
     int type;
-    int rotated;
-    int col;
-    int row;
+    int moved;
+    int y_axis;
+    int x_axis;
     int cells[4][4];
 } Ship;
 
@@ -215,7 +215,15 @@ int read_and_validate_packet(int connection, char *buffer, BattleShip *ship)
 
     if (nbytes < 2 || buffer[0] != 'I' || buffer[1] != ' ') 
     {
-        const char *error = (buffer[0] != 'I') ? "E 101" : "E 201";
+        const char *error;
+    if (buffer[0] != 'I')
+    {
+        error = "E 101";
+    }
+    else
+    {
+        error = "E 201";
+    }
         send(connection, error, strlen(error) + 1, 0);
         return 0;
     }
@@ -281,12 +289,12 @@ int parse_packet_parameters(const char *buffer, int *parameters)
 }
 
 
-int handle_initialize_packet(int conn_fd, BattleShip *ship) 
+int handle_initialize_packet(int connection, BattleShip *ship) 
 {
     char buffer[BUFFER_SIZE] = {0};
     int parameters[20] = {0};
     const char *correct = "A";
-    int validation_result = read_and_validate_packet(conn_fd, buffer, ship);
+    int validation_result = read_and_validate_packet(connection, buffer, ship);
     if (validation_result <= 0) 
     {
         return validation_result;
@@ -297,11 +305,19 @@ int handle_initialize_packet(int conn_fd, BattleShip *ship)
     {
         char error_msg[10];
         snprintf(error_msg, sizeof(error_msg), "E %d", parse_result);
-        send(conn_fd, error_msg, strlen(error_msg) + 1, 0);
+        send(connection, error_msg, strlen(error_msg) + 1, 0);
         return 0;
     }
 
-    char (*board)[MAX_BOARD_SIZE] = (ship->turn == 1) ? ship->player1_board : ship->player2_board;
+    char (*board)[MAX_BOARD_SIZE];
+if (ship->turn == 1)
+{
+    board = ship->player1_board;
+}
+else
+{
+    board = ship->player2_board;
+}
     for (int i = 0; i < ship->height; i++) 
     {
         memset(board[i], '0', ship->width);
@@ -310,65 +326,77 @@ int handle_initialize_packet(int conn_fd, BattleShip *ship)
     int prio = 0;  
     for (int piece = 0; piece < MAX_SHIPS; piece++) 
     {
-        char ship_num = '1' + piece;
-        int shape = parameters[piece * 4];
-        int rotated = parameters[piece * 4 + 1];
-        int col = parameters[piece * 4 + 2];
-        int row = parameters[piece * 4 + 3];
+        char count = '1' + piece;
+        int pos = parameters[piece * 4];
+        int moved = parameters[piece * 4 + 1];
+        int y_axis = parameters[piece * 4 + 2];
+        int x_axis = parameters[piece * 4 + 3];
 
-        if (shape < 1 || shape > 7) 
+        if (pos < 1 || pos > 7) 
         {
-            if (!prio || 300 < prio) prio = 300;
-            continue;
-        }
-        if (rotated < 1 || rotated > 4) 
-        {
-            if (!prio || 301 < prio) prio = 301;
-            continue;
-        }
-        rotated--;  
-
-        int stem1 = -1, stem2 = -1;
-        for (int x = 0; x < 4 && stem2 == -1; x++) 
-        {
-            for (int y = 0; y < 4 && stem1 == -1; y++) 
+            if (!prio || 300 < prio) 
             {
-                if (AllShapes[shape - 1][rotated][y][x] == '2') 
+                prio = 300;
+            }
+            continue;
+        }
+        if (moved < 1 || moved > 4) 
+        {
+            if (!prio || 301 < prio) 
+            {
+                prio = 301;
+            }
+            continue;
+        }
+        moved--;  
+
+        int origin1 = -1, origin2 = -1;
+        for (int x = 0; x < 4 && origin2 == -1; x++) 
+        {
+            for (int y = 0; y < 4 && origin1 == -1; y++) 
+            {
+                if (AllShapes[pos - 1][moved][y][x] == '2') 
                 {
-                    stem1 = y;
-                    stem2 = x;
+                    origin1 = y;
+                    origin2 = x;
                     break;
                 }
             }
         }
 
         int placed = 1;
-        if (row < 0 || row >= ship->height || col < 0 || col >= ship->width) 
+        if (x_axis < 0 || x_axis >= ship->height || y_axis < 0 || y_axis >= ship->width) 
         {
-            if (!prio || 302 < prio) prio = 302;
+            if (!prio || 302 < prio) 
+            {
+                prio = 302;
+            }
             placed = 0;
         } 
-        else if (board[row][col] != '0') 
+        else if (board[x_axis][y_axis] != '0') 
         {
-            if (!prio || 303 < prio) prio = 303;
+            if (!prio || 303 < prio) 
+            {
+                prio = 303;
+            }
             placed = 0;
         }
         for (int x = 0; x < 4 && placed; x++) 
         {
             for (int y = 0; y < 4 && placed; y++) 
             {
-                if (AllShapes[shape - 1][rotated][y][x] == '1') 
+                if (AllShapes[pos - 1][moved][y][x] == '1') 
                 {
-                    int board1 = row + (y - stem1);
-                    int board2 = col + (x - stem2);
-                    if (board1 < 0 || board1 >= ship->height || board2 < 0 || board2 >= ship->width) 
+                    int player1 = x_axis + (y - origin1);
+                    int player2 = y_axis + (x - origin2);
+                    if (player1 < 0 || player1 >= ship->height || player2 < 0 || player2 >= ship->width) 
                     {
                         if (!prio || 302 < prio) prio = 302;
                         placed = 0;
                         break;
                     }
 
-                    if (board[board1][board2] != '0') 
+                    if (board[player1][player2] != '0') 
                     {
                         if (!prio || 303 < prio) prio = 303;
                         placed = 0;
@@ -380,17 +408,17 @@ int handle_initialize_packet(int conn_fd, BattleShip *ship)
 
         if (placed != 0) 
         {
-            board[row][col] = ship_num;
+            board[x_axis][y_axis] = count;
 
             for (int x = 0; x < 4; x++) 
             {
                 for (int y = 0; y < 4; y++) 
                 {
-                    if (AllShapes[shape - 1][rotated][y][x] == '1') 
+                    if (AllShapes[pos - 1][moved][y][x] == '1') 
                     {
-                        int board1 = row + (y - stem1);
-                        int board2 = col + (x - stem2);
-                        board[board1][board2] = ship_num;
+                        int player1 = x_axis + (y - origin1);
+                        int player2 = y_axis + (x - origin2);
+                        board[player1][player2] = count;
                     }
                 }
             }
@@ -401,29 +429,24 @@ int handle_initialize_packet(int conn_fd, BattleShip *ship)
     {
         char error_msg[10];
         snprintf(error_msg, sizeof(error_msg), "E %d", prio);
-        send(conn_fd, error_msg, strlen(error_msg) + 1, 0);
+        send(connection, error_msg, strlen(error_msg) + 1, 0);
         return 0;
     }
-    send(conn_fd, correct, strlen(correct) + 1, 0);
+    send(connection, correct, strlen(correct) + 1, 0);
     return 1;
 }
 
 
-
-
-
-
-
-int validate_shoot_target(int row, int col, char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int width, int height, int connection)
+int validate_shoot_target(int x_axis, int y_axis, char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int width, int height, int connection)
 {
-    if (row < 0 || row >= height || col < 0 || col >= width)
+    if (x_axis < 0 || x_axis >= height || y_axis < 0 || y_axis >= width)
     {
         const char *error = "E 400";
         send(connection, error, strlen(error) + 1, 0);
         return 0;
     }
 
-    if (board[row][col] == 'M' || board[row][col] == 'H')
+    if (board[x_axis][y_axis] == 'M' || board[x_axis][y_axis] == 'H')
     {
         const char *error = "E 401";
         send(connection, error, strlen(error) + 1, 0);
@@ -433,50 +456,57 @@ int validate_shoot_target(int row, int col, char board[MAX_BOARD_SIZE][MAX_BOARD
     return 1;
 }
 
-int check_ships_remaining(BattleShip *ship)
+int ships_left(BattleShip *ship)
 {
-    int ships_left = 0;
-    char (*board)[MAX_BOARD_SIZE] = (ship->turn == 1) ? ship->player2_board : ship->player1_board;
+    int left = 0;
+    char (*board)[MAX_BOARD_SIZE];
+if (ship->turn == 1)
+{
+    board = ship->player2_board;
+}
+else
+{
+    board = ship->player1_board;
+}
 
-    for (int ship_num = 1; ship_num <= MAX_SHIPS; ship_num++)
+    for (int num = 1; num <= MAX_SHIPS; num++)
     {
-        char ship_char = ship_num + '0';
-        int ship_exists = 0;
+        char hold_char = num + '0';
+        int still_there = 0;
 
-        for (int i = 0; i < ship->height && !ship_exists; i++)
+        for (int i = 0; i < ship->height && !still_there; i++)
         {
-            for (int j = 0; j < ship->width && !ship_exists; j++)
+            for (int j = 0; j < ship->width && !still_there; j++)
             {
-                if (board[i][j] == ship_char)
+                if (board[i][j] == hold_char)
                 {
-                    ship_exists = 1;
-                    ships_left++;
+                    still_there = 1;
+                    left++;
                 }
             }
         }
     }
-
-    return ships_left;
+    return left;
 }
 
-void process_shoot_result(BattleShip *ship, int row, int col, char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int connection)
+void process_shoot_result(BattleShip *ship, int x_axis, int y_axis, char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int connection)
 {
     char msg[20];
-    if (board[row][col] == '0') 
+    if (board[x_axis][y_axis] == '0') 
     {
-        board[row][col] = 'M';
-        int ship_count = check_ships_remaining(ship);
-        snprintf(msg, sizeof(msg), "R %d M", ship_count);
+        board[x_axis][y_axis] = 'M';
+        int left = ships_left(ship);
+        snprintf(msg, sizeof(msg), "R %d M", left);
         send(connection, msg, strlen(msg) + 1, 0);
     } 
     else 
     {
-        board[row][col] = 'H';
-        int ship_count = check_ships_remaining(ship);
-        snprintf(msg, sizeof(msg), "R %d H", ship_count);
+        board[x_axis][y_axis] = 'H';
+        int left = ships_left(ship);
+        snprintf(msg, sizeof(msg), "R %d H", left);
         send(connection, msg, strlen(msg) + 1, 0);
 
-        if (ship_count == 0) 
+        if (left == 0) 
         {
             ship->game_over = 1;
         }
@@ -485,43 +515,59 @@ void process_shoot_result(BattleShip *ship, int row, int col, char board[MAX_BOA
 
 int handle_shoot_packet(int connection, char *buffer, BattleShip *ship)
 {
-    int row, col;
+    int x_axis, y_axis;
     char extra[BUFFER_SIZE];
-    int inputs = sscanf(buffer, "S %d %d %s", &row, &col, extra);
+    int reads = sscanf(buffer, "S %d %d %s", &x_axis, &y_axis, extra);
 
-    if (inputs != 2)
+    if (reads != 2)
     {
         const char *error = "E 202"; 
         send(connection, error, strlen(error) + 1, 0);
         return 0;
     }
 
-    char (*opponent_board)[MAX_BOARD_SIZE] = (ship->turn == 1) ? ship->player2_board : ship->player1_board;
+    char (*opponent_board)[MAX_BOARD_SIZE];
+    if (ship->turn == 1)
+    {
+        opponent_board = ship->player2_board;
+    }
+    else
+    {
+        opponent_board = ship->player1_board;
+    }
 
-    if (!validate_shoot_target(row, col, opponent_board, ship->width, ship->height, connection))
+    if (!validate_shoot_target(x_axis, y_axis, opponent_board, ship->width, ship->height, connection))
     {
         return 0; 
     }
 
     char result_msg[BUFFER_SIZE];
-    if (opponent_board[row][col] == '0')
+    if (opponent_board[x_axis][y_axis] == '0')
     {
-        opponent_board[row][col] = 'M'; 
-        int remaining_ships = check_ships_remaining(ship);
-        snprintf(result_msg, sizeof(result_msg), "R %d M", remaining_ships);
+        opponent_board[x_axis][y_axis] = 'M'; 
+        int left = ships_left(ship);
+        snprintf(result_msg, sizeof(result_msg), "R %d M", left);
         send(connection, result_msg, strlen(result_msg) + 1, 0);
     }
     else
     {
-        opponent_board[row][col] = 'H'; 
-        int remaining_ships = check_ships_remaining(ship);
-        snprintf(result_msg, sizeof(result_msg), "R %d H", remaining_ships);
+        opponent_board[x_axis][y_axis] = 'H'; 
+        int left = ships_left(ship);
+        snprintf(result_msg, sizeof(result_msg), "R %d H", left);
         send(connection, result_msg, strlen(result_msg) + 1, 0);
 
-        if (remaining_ships == 0) 
+        if (left == 0) 
 {
     char loser_buffer[BUFFER_SIZE] = {0};
-    int loser_connection = (ship->turn == 1) ? ship->play_conn2 : ship->play_conn;
+    int loser_connection;
+    if (ship->turn == 1)
+    {
+        loser_connection = ship->play_conn2;
+    }
+    else
+    {
+        loser_connection = ship->play_conn;
+    }
     read(loser_connection, loser_buffer, BUFFER_SIZE - 1);
     const char *loser_msg = "H 0";
     send(loser_connection, loser_msg, strlen(loser_msg) + 1, 0);
@@ -531,7 +577,14 @@ int handle_shoot_packet(int connection, char *buffer, BattleShip *ship)
     const char *winner_msg = "H 1";
     send(winner_connection, winner_msg, strlen(winner_msg) + 1, 0);
 
-    printf("[Server] Player %d wins. All ships sunk for Player %d.\n", ship->turn, (ship->turn == 1) ? 2 : 1);
+    if (ship->turn == 1)
+    {
+        printf("[Server] Player 1 wins. All ships sunk for Player 2.\n");
+    }
+    else
+    {
+        printf("[Server] Player 2 wins. All ships sunk for Player 1.\n");
+    }
 
     ship->game_over = 1;
 
@@ -540,8 +593,22 @@ int handle_shoot_packet(int connection, char *buffer, BattleShip *ship)
 
     }
 
-    printf("[Server] Switching turn from Player %d to Player %d.\n", ship->turn, (ship->turn == 1) ? 2 : 1);
-    ship->turn = (ship->turn == 1) ? 2 : 1;
+    if (ship->turn == 1)
+    {
+        printf("[Server] Player 1 wins. All ships sunk for Player 2.\n");
+    }
+    else
+    {
+        printf("[Server] Player 2 wins. All ships sunk for Player 1.\n");
+    }   
+    if (ship->turn == 1)
+    {
+        ship->turn = 2;
+    }
+        else
+    {
+        ship->turn = 1;
+    }
 
     return 1;
 }
@@ -549,75 +616,85 @@ int handle_shoot_packet(int connection, char *buffer, BattleShip *ship)
 
 
 
-int count_remaining_ships(BattleShip *ship) 
+int count_left(BattleShip *ship) 
 {
-    int remaining_ships = 0;
-    char (*opponent_board)[MAX_BOARD_SIZE] = (ship->turn == 1) ? ship->player2_board : ship->player1_board;
+    int left = 0;
+   char (*opponent_board)[MAX_BOARD_SIZE];
+if (ship->turn == 1)
+{
+    opponent_board = ship->player1_board;
+}
+else
+{
+    opponent_board = ship->player2_board;
+}
 
-    for (int ship_number = 1; ship_number <= 5; ship_number++) 
+
+    for (int num = 1; num <= 5; num++) 
     {
-        char ship_identifier = ship_number + '0';
-        int ship_found = 0;
+        char yes_ship = num + '0';
+        int hits = 0;
 
-        for (int row = 0; row < ship->height && !ship_found; row++) 
+        for (int x_axis = 0; x_axis < ship->height && !hits; x_axis++) 
         {
-            for (int col = 0; col < ship->width && !ship_found; col++) 
+            for (int y_axis = 0; y_axis < ship->width && !hits; y_axis++) 
             {
-                if (opponent_board[row][col] == ship_identifier) 
+                if (opponent_board[x_axis][y_axis] == yes_ship) 
                 {
-                    ship_found = 1;
-                    remaining_ships++;
+                    hits = 1;
+                    left++;
                 }
             }
         }
     }
-    return remaining_ships;
+    return left;
 }
 
-void handle_query(BattleShip *ship)
+void query(BattleShip *ship)
 {
     char q_res[3 + (7 * ship->width * ship->height) + 1];
     char *ptr = q_res;
-    char (*current_board)[MAX_BOARD_SIZE];
+    char (*board)[MAX_BOARD_SIZE];
     int play_conn;
-    int remaining_ships = check_ships_remaining(ship);
+    int left = ships_left(ship);
 
-    *ptr++ = 'G';
-    *ptr++ = ' ';
-    *ptr++ = remaining_ships + '0';
-    *ptr++ = ' ';
+const char values[] = {'G', ' ', left + '0', ' '};
+for (int i = 0; i < 4; i++)
+{
+    *ptr++ = values[i];
+}
 
     if (ship->turn == 1)
     {
-        current_board = ship->player2_board;
+        board = ship->player2_board;
         play_conn = ship->play_conn;
     }
     else
     {
-        current_board = ship->player1_board;
+        board = ship->player1_board;
         play_conn = ship->play_conn2;
     }
 
-    for (int row = 0; row < ship->height; row++)
+    for (int x_axis = 0; x_axis < ship->height; x_axis++)
     {
-        for (int col = 0; col < ship->width; col++)
+        for (int y_axis = 0; y_axis < ship->width; y_axis++)
         {
-            if (current_board[row][col] == 'H')
+            if (board[x_axis][y_axis] == 'H')
             {
                 *ptr++ = 'H';
                 *ptr++ = ' ';
-                *ptr++ = row + '0';
+                *ptr++ = x_axis + '0';
                 *ptr++ = ' ';
-                *ptr++ = col + '0';
+                *ptr++ = y_axis + '0';
                 *ptr++ = ' ';
             }
-            else if (current_board[row][col] == 'M')
+            else if (board[x_axis][y_axis] == 'M')
             {
                 *ptr++ = 'M';
                 *ptr++ = ' ';
-                *ptr++ = row + '0';
+                *ptr++ = x_axis + '0';
                 *ptr++ = ' ';
-                *ptr++ = col + '0';
+                *ptr++ = y_axis + '0';
                 *ptr++ = ' ';
             }
         }
@@ -855,7 +932,15 @@ if (error_occurred)
 }
 while (!set_ship.game_over) 
 {
-    int connection = (set_ship.turn == 1) ? set_ship.play_conn : set_ship.play_conn2;
+    int connection;
+    if (set_ship.turn == 1)
+    {
+        connection = set_ship.play_conn;
+    }
+    else
+    {
+        connection = set_ship.play_conn2;
+    }
 
     char buffer[BUFFER_SIZE] = {0};
     int nbytes = read(connection, buffer, BUFFER_SIZE - 1);
@@ -881,12 +966,27 @@ while (!set_ship.game_over)
         {
             char *forfeit_msg = "H 0";
             char *winner_msg = "H 1";
-            int other_connection = (set_ship.turn == 1) ? set_ship.play_conn2 : set_ship.play_conn;
+            int other_connection;
+    if (set_ship.turn == 1)
+    {
+        other_connection = set_ship.play_conn2;
+    }
+    else
+    {
+        other_connection = set_ship.play_conn;
+    }
 
             send(connection, forfeit_msg, strlen(forfeit_msg) + 1, 0);
             send(other_connection, winner_msg, strlen(winner_msg) + 1, 0);
 
-            printf("[Server] Player %d forfeited. Player %d wins.\n", set_ship.turn, (set_ship.turn == 1) ? 2 : 1);
+            if (set_ship.turn == 1)
+    {
+        printf("[Server] Player 1 forfeited. Player 2 wins.\n");
+    }
+    else
+    {
+        printf("[Server] Player 2 forfeited. Player 1 wins.\n");
+    }
             set_ship.game_over = 1;
             break;
         }
@@ -902,7 +1002,7 @@ while (!set_ship.game_over)
         }
         else if (command[0] == 'Q') 
         {
-            handle_query(&set_ship);
+            query(&set_ship);
         }
         else 
         {
