@@ -285,7 +285,7 @@ int handle_initialize_packet(int conn_fd, BattleShip *ship)
 {
     char buffer[BUFFER_SIZE] = {0};
     int parameters[20] = {0};
-
+    const char *correct = "A";
     int validation_result = read_and_validate_packet(conn_fd, buffer, ship);
     if (validation_result <= 0) 
     {
@@ -328,15 +328,15 @@ int handle_initialize_packet(int conn_fd, BattleShip *ship)
         }
         rotated--;  
 
-        int stem_y = -1, stem_x = -1;
-        for (int x = 0; x < 4 && stem_x == -1; x++) 
+        int stem1 = -1, stem2 = -1;
+        for (int x = 0; x < 4 && stem2 == -1; x++) 
         {
-            for (int y = 0; y < 4 && stem_y == -1; y++) 
+            for (int y = 0; y < 4 && stem1 == -1; y++) 
             {
                 if (AllShapes[shape - 1][rotated][y][x] == '2') 
                 {
-                    stem_y = y;
-                    stem_x = x;
+                    stem1 = y;
+                    stem2 = x;
                     break;
                 }
             }
@@ -359,16 +359,16 @@ int handle_initialize_packet(int conn_fd, BattleShip *ship)
             {
                 if (AllShapes[shape - 1][rotated][y][x] == '1') 
                 {
-                    int board_y = row + (y - stem_y);
-                    int board_x = col + (x - stem_x);
-                    if (board_y < 0 || board_y >= ship->height || board_x < 0 || board_x >= ship->width) 
+                    int board1 = row + (y - stem1);
+                    int board2 = col + (x - stem2);
+                    if (board1 < 0 || board1 >= ship->height || board2 < 0 || board2 >= ship->width) 
                     {
                         if (!prio || 302 < prio) prio = 302;
                         placed = 0;
                         break;
                     }
 
-                    if (board[board_y][board_x] != '0') 
+                    if (board[board1][board2] != '0') 
                     {
                         if (!prio || 303 < prio) prio = 303;
                         placed = 0;
@@ -388,15 +388,15 @@ int handle_initialize_packet(int conn_fd, BattleShip *ship)
                 {
                     if (AllShapes[shape - 1][rotated][y][x] == '1') 
                     {
-                        int board_y = row + (y - stem_y);
-                        int board_x = col + (x - stem_x);
-                        board[board_y][board_x] = ship_num;
+                        int board1 = row + (y - stem1);
+                        int board2 = col + (x - stem2);
+                        board[board1][board2] = ship_num;
                     }
                 }
             }
         }
-    }
 
+    }
     if (prio != 0) 
     {
         char error_msg[10];
@@ -404,9 +404,7 @@ int handle_initialize_packet(int conn_fd, BattleShip *ship)
         send(conn_fd, error_msg, strlen(error_msg) + 1, 0);
         return 0;
     }
-
-    const char *ack = "A";
-    send(conn_fd, ack, strlen(ack) + 1, 0);
+    send(conn_fd, correct, strlen(correct) + 1, 0);
     return 1;
 }
 
